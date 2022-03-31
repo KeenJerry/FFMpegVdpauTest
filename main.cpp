@@ -37,6 +37,72 @@ static int hw_decoder_init(AVCodecContext *ctx, const enum AVHWDeviceType type)
     return err;
 }
 
+static int decode(AVCodecContext *av_ctx, AVPacket *packet) {
+    AVFrame *frame, *sw_frame = nullptr;
+    AVFrame *tmp_frame = nullptr;
+    uint8_t *buffer = nullptr;
+    int size;
+    int ret = 0;
+
+    ret = avcodec_send_packet(av_ctx, packet);
+    if (ret < 0) {
+        fprintf(stderr, "Error during decoding.");
+        return ret;
+    }
+
+    while(true) {
+        if (!(frame = av_frame_alloc()) || !(sw_frame = av_frame_alloc())) {
+            fprintf(stderr, "Cannot alloc frame in decode loop.");
+            goto fail;
+        }
+
+        ret = avcodec_receive_frame(av_ctx, frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            av_frame_free(&frame);
+            av_frame_free(&sw_frame);
+            return 0;
+        } else if (ret < 0) {
+            fprintf(stderr, "Error while decoding.");
+            goto fail;
+        }
+
+        if (frame->format == hw_pix_fmt) {
+            if ((ret = av_hwframe_transfer_data(sw_frame, frame, 0)) < 0) {
+                fprintf(stderr, "Error transferring the data to ram.");
+                goto fail;
+            }
+            tmp_frame = sw_frame;
+        } else {
+            tmp_frame = frame;
+        }
+
+        size = av_image_get_buffer_size(static_cast<AVPixelFormat>(tmp_frame->format), tmp_frame->width, tmp_frame->height, 1);
+        buffer = static_cast<uint8_t *>(av_malloc(size));
+        if (!buffer) {
+            fprintf(stderr, "Can not alloc buffer\n");
+            ret = AVERROR(ENOMEM);
+            goto fail;
+        }
+        ret = av_image_copy_to_buffer(buffer, size,
+                                      (const uint8_t * const *)tmp_frame->data,
+                                      (const int *)tmp_frame->linesize, static_cast<AVPixelFormat>(tmp_frame->format),
+                                      tmp_frame->width, tmp_frame->height, 1);
+        if (ret < 0) {
+            fprintf(stderr, "Can not copy image to buffer\n");
+            goto fail;
+        }
+
+        fprintf(stdout, "Decoded one frame.\n");
+
+    fail:
+        av_frame_free(&frame);
+        av_frame_free(&sw_frame);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+}
+
 int main() {
     // get hw device type, check if supported
     enum AVHWDeviceType type;
@@ -55,7 +121,7 @@ int main() {
 
     // open input file
     AVFormatContext *input_ctx = nullptr;
-    if (avformat_open_input(&input_ctx, "test.flv", nullptr, nullptr) != 0) {
+    if (avformat_open_input(&input_ctx, "../test.flv", nullptr, nullptr) != 0) {
         fprintf(stderr, "Open input file test.flv failed.");
         return -1;
     }
@@ -117,6 +183,22 @@ int main() {
         if ((ret = av_read_frame(input_ctx, packet)) < 0) {
             break;
         }
+
+        if (video_stream == packet->stream_index) {
+            ret = decode(decoder_ctx, packet);
+        }
+
+        av_packet_unref(packet);
     }
+
+    // flush decoder
+    decode(decoder_ctx, nullptr);
+
+    // free resources
+    av_packet_free(&packet);
+    avcodec_free_context(&decoder_ctx);
+    avformat_close_input(&input_ctx);
+    av_buffer_unref(&hw_device_ctx);
+
     return 0;
 }
