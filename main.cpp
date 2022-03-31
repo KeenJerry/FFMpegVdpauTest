@@ -8,8 +8,11 @@ extern "C" {
 #include <libavutil/imgutils.h>
 }
 
+#include "opencv2/opencv.hpp"
+
 static AVBufferRef *hw_device_ctx = nullptr;
 static enum AVPixelFormat hw_pix_fmt;
+static cv::Mat output_mat;
 
 static enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts) {
     const enum AVPixelFormat *p;
@@ -40,8 +43,6 @@ static int hw_decoder_init(AVCodecContext *ctx, const enum AVHWDeviceType type)
 static int decode(AVCodecContext *av_ctx, AVPacket *packet) {
     AVFrame *frame, *sw_frame = nullptr;
     AVFrame *tmp_frame = nullptr;
-    uint8_t *buffer = nullptr;
-    int size;
     int ret = 0;
 
     ret = avcodec_send_packet(av_ctx, packet);
@@ -76,24 +77,9 @@ static int decode(AVCodecContext *av_ctx, AVPacket *packet) {
             tmp_frame = frame;
         }
 
-        size = av_image_get_buffer_size(static_cast<AVPixelFormat>(tmp_frame->format), tmp_frame->width, tmp_frame->height, 1);
-        buffer = static_cast<uint8_t *>(av_malloc(size));
-        if (!buffer) {
-            fprintf(stderr, "Can not alloc buffer\n");
-            ret = AVERROR(ENOMEM);
-            goto fail;
-        }
-        ret = av_image_copy_to_buffer(buffer, size,
-                                      (const uint8_t * const *)tmp_frame->data,
-                                      (const int *)tmp_frame->linesize, static_cast<AVPixelFormat>(tmp_frame->format),
-                                      tmp_frame->width, tmp_frame->height, 1);
-        if (ret < 0) {
-            fprintf(stderr, "Can not copy image to buffer\n");
-            goto fail;
-        }
-
-        fprintf(stdout, "Decoded one frame.\n");
-
+        output_mat = cv::Mat(av_ctx->height, av_ctx->width, CV_8UC1, tmp_frame->data[0], tmp_frame->linesize[0]);
+        cv::imwrite("output.png", output_mat);
+        fprintf(stdout, "Decode one frame.\n");
     fail:
         av_frame_free(&frame);
         av_frame_free(&sw_frame);
@@ -127,7 +113,7 @@ int main() {
     }
 
     // find video stream info
-    const AVCodec *decoder = nullptr;
+    AVCodec *decoder = nullptr;
     if (avformat_find_stream_info(input_ctx, nullptr) < 0) {
         fprintf(stderr, "Cannot find input file stream info.");
         return -1;

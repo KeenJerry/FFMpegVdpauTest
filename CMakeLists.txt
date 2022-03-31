@@ -101,7 +101,97 @@ if (NOT ${BZIP2_FOUND})
     message(FATAL_ERROR "BZIP2 not found")
 endif()
 
+# opencv
+ExternalProject_Add(opencv_project
+        PREFIX ${CMAKE_SOURCE_DIR}/third-party/opencv
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/third-party/opencv
+        BINARY_DIR ${CMAKE_SOURCE_DIR}/third-party/opencv/build
+        INSTALL_DIR ${CMAKE_SOURCE_DIR}/third-party/opencv/install
+        CMAKE_ARGS
+            -DBUILD_DOCS:BOOL=OFF
+            -DBUILD_EXAMPLES:BOOL=OFF
+            -DBUILD_PACKAGE:BOOL=OFF
+            -DBUILD_SHARED_LIBS:BOOL=OFF
+            -DBUILD_TESTS:BOOL=OFF
+            -DWITH_FFMPEG:BOOL=OFF
+            -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_SOURCE_DIR}/third-party/opencv/install
+        )
+
+ExternalProject_Get_Property(opencv_project INSTALL_DIR)
+set(OPENCV_INCLUDE_DIR ${INSTALL_DIR}/include/opencv4)
+set(OPENCV_LIBRARY_DIR ${INSTALL_DIR}/lib)
+
+add_library(opencv_core STATIC IMPORTED)
+set_property(TARGET opencv_core PROPERTY IMPORTED_LOCATION ${OPENCV_LIBRARY_DIR}/libopencv_core.a)
+add_dependencies(opencv_core opencv_project)
+
+add_library(opencv_imgcodecs STATIC IMPORTED)
+set_property(TARGET opencv_imgcodecs PROPERTY IMPORTED_LOCATION ${OPENCV_LIBRARY_DIR}/libopencv_imgcodecs.a)
+add_dependencies(opencv_imgcodecs opencv_project)
+
+add_library(opencv_imgproc STATIC IMPORTED)
+set_property(TARGET opencv_imgproc PROPERTY IMPORTED_LOCATION ${OPENCV_LIBRARY_DIR}/libopencv_imgproc.a)
+add_dependencies(opencv_imgproc opencv_project)
+
+# jpeg
+find_package(JPEG)
+if (NOT ${JPEG_FOUND})
+    message(FATAL_ERROR "JPEG not found")
+endif()
+
+# png
+find_package(PNG)
+if (NOT ${PNG_FOUND})
+    message(FATAL_ERROR "PNG not found")
+endif()
+
+# tiff
+find_package(TIFF)
+if (NOT ${TIFF_FOUND})
+    message(FATAL_ERROR "TIFF not found")
+endif()
+
+# openjp2
+find_package(OpenJPEG)
+if (NOT ${OpenJPEG_FOUND})
+    message(FATAL_ERROR "OpenJPEG not found")
+endif()
+
+# webp
+find_path(WEBP_INCLUDE_DIR
+        webp/decode.h
+        /usr/include /usr/local/include
+        )
+find_library(WEBP_LIBRARIES
+        NAMES "webp"
+        PATHS /usr/lib /usr/local/lib
+        )
+
 add_executable(FFmpegVdpauTest main.cpp)
-target_include_directories(FFmpegVdpauTest PRIVATE ${FFMPEG_INCLUDE_DIR})
+target_include_directories(FFmpegVdpauTest PRIVATE ${FFMPEG_INCLUDE_DIR} ${OPENCV_INCLUDE_DIR})
 target_link_libraries(FFmpegVdpauTest
-        avformat avcodec avutil swresample ${VA_LIBRARIES} ${VA-DRM_LIBRARIES} ${VA-X11_LIBRARIES} ${VDPAU_LIBRARIES} ${X11_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBLZMA_LIBRARIES} ${BZIP2_LIBRARIES})
+        avformat
+        avcodec
+        avutil
+        swresample
+        ${VA_LIBRARIES}
+        ${VA-DRM_LIBRARIES}
+        ${VA-X11_LIBRARIES}
+        ${VDPAU_LIBRARIES}
+        ${X11_LIBRARIES}
+        ${ZLIB_LIBRARIES}
+        ${LIBLZMA_LIBRARIES}
+        ${BZIP2_LIBRARIES}
+        opencv_imgcodecs
+        opencv_imgproc
+        opencv_core
+        ${OPENCV_LIBRARY_DIR}/opencv4/3rdparty/libippiw.a
+        ${OPENCV_LIBRARY_DIR}/opencv4/3rdparty/libippicv.a
+        ${OPENCV_LIBRARY_DIR}/opencv4/3rdparty/libittnotify.a
+        ${OPENCV_LIBRARY_DIR}/opencv4/3rdparty/libIlmImf.a
+        ${JPEG_LIBRARIES}
+        ${PNG_LIBRARIES}
+        ${TIFF_LIBRARIES}
+        ${OPENJPEG_LIBRARIES}
+        ${WEBP_LIBRARIES}
+        )

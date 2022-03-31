@@ -1,3 +1,6 @@
 [submodule "third-party/ffmpeg"]
 	path = third-party/ffmpeg
 	url = https://github.com/FFmpeg/FFmpeg.git
+[submodule "third-party/opencv"]
+	path = third-party/opencv
+	url = https://github.com/opencv/opencv.git
